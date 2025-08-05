@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tycoon Simulator</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #stocks, #portfolio, #businesses, #realEstate, #leaderboard { margin-bottom: 20px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; }
+    th { background-color: #f4f4f4; }
+    button { padding: 5px 10px; margin: 2px; }
+  </style>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <h1>Fantasy Stock Trading Game</h1>
+  <div id="status"></div>
+
+  <h2>Stocks</h2>
+  <div id="stocks"></div>
+
+  <h2>Your Portfolio</h2>
+  <div id="portfolio"></div>
+
+  <h2>Businesses (Premium)</h2>
+  <div id="businesses"></div>
+
+  <h2>Real Estate (Premium)</h2>
+  <div id="realEstate"></div>
+
+  <h2>Leaderboard</h2>
+  <div id="leaderboard"></div>
+
+  <h2>Controls</h2>
+  <button id="buyPremium">Unlock Insider & Investor Pack ($10.99/mo)</button>
+  <button id="useInsiderInfo">Use Insider Info (Premium)</button>
+  <button id="toggleIndexFund">Toggle Index Fund While Jailed</button>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="game.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+  const socket = io("http://localhost:3001");
+
+  socket.on("init", ({ stocks, player }) => {
+    console.log("Game started:", stocks, player);
+    // Render stocks + player UI here
+  });
+
+  socket.on("update", ({ player, result }) => {
+    console.log("Updated player state:", player);
+  });
+
+  socket.on("insiderData", (tips) => {
+    alert("Hot stocks:\n" + tips.map(t => `${t.name}: $${t.price}`).join("\n"));
+  });
+
+  socket.on("jailed", () => {
+    alert("You're in jail for insider trading!");
+  });
+
+  // Example buy/sell actions:
+  function buyStock(stockId, quantity) {
+    socket.emit("buy", { stockId, quantity });
+  }
+
+  function sellStock(stockId, quantity) {
+    socket.emit("sell", { stockId, quantity });
+  }
+
+  function getInsiderInfo() {
+    socket.emit("insiderInfo");
+  }
+
+  function subscribe() {
+    socket.emit("subscribe");
+  }
+</script>
+</body>
+</html>

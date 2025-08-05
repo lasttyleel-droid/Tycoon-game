@@ -1,0 +1,200 @@
+const socket = io();
+let player = null;
+let stocks = [];
+
+const statusEl = document.getElementById('status');
+const stocksEl = document.getElementById('stocks');
+const portfolioEl = document.getElementById('portfolio');
+const businessesEl = document.getElementById('businesses');
+const realEstateEl = document.getElementById('realEstate');
+const leaderboardEl = document.getElementById('leaderboard');
+
+function displayStocks() {
+  if (!stocks.length) return;
+  let html = '<table><tr><th>Ticker</th><th>Name</th><th>Price</th><th>Buy</th></tr>';
+  stocks.forEach(stock => {
+    html += `<tr>
+      <td>${stock.ticker}</td>
+      <td>${stock.name}</td>
+      <td>$${stock.price.toFixed(2)}</td>
+      <td><button onclick="buyStock('${stock.ticker}')">Buy 10</button></td>
+    </tr>`;
+  });
+  html += '</table>';
+  stocksEl.innerHTML = html;
+}
+
+function displayPortfolio() {
+  if (!player) return;
+  let html = `<p>Cash: $${player.cashBalance.toFixed(2)} | Weeks Played: ${player.weeksPlayed} | Net Worth: $${player.netWorth.toFixed(2)}</p>`;
+  if (player.jailed) {
+    html += `<p style="color:red">JAILED! Weeks left: ${player.jailTimeLeft}</p>`;
+  }
+  if (Object.keys(player.portfolio).length === 0) {
+    html += '<p>No stocks owned.</p>';
+  } else {
+    html += '<table><tr><th>Ticker</th><th>Shares</th><th>Sell</th></tr>';
+    for (const [ticker, shares] of Object.entries(player.portfolio)) {
+      html += `<tr>
+        <td>${ticker}</td>
+        <td>${shares}</td>
+        <td><button onclick="sellStock('${ticker}', 10)">Sell 10</button></td>
+      </tr>`;
+    }
+    html += '</table>';
+  }
+  portfolioEl.innerHTML = html;
+
+  // Businesses
+  if (!player.isPremium) {
+    businessesEl.innerHTML = '<p>Business building is a premium feature.</p>';
+  } else {
+    let bhtml = '<ul>';
+    for (const b of Object.values(player.businesses)) {
+      bhtml += `<li>${b.name} - Weekly Profit: $${(b.revenuePerWeek - b.expensesPerWeek).toFixed(2)}</li>`;
+    }
+    bhtml += '</ul>';
+    bhtml += `<button onclick="buyBusiness()">Start Business ($10,000)</button>`;
+    businessesEl.innerHTML = bhtml;
+  }
+
+  // Real Estate
+  if (!player.isPremium) {
+    realEstateEl.innerHTML = '<p>Real estate investing is a premium feature.</p>';
+  } else {
+    let rhtml = '<ul>';
+    for (const r of Object.values(player.realEstates)) {
+      rhtml += `<li>${r.type} - Weekly Rent: $${(r.rentPerWeek * (1 - r.vacancyRate)).toFixed(2)}</li>`;
+    }
+    rhtml += '</ul>';
+    rhtml += `<button onclick="buyRealEstate()">Buy Real Estate ($50,000)</button>`;
+    realEstateEl.innerHTML = rhtml;
+  }
+}
+
+function displayLeaderboard(players) {
+  players.sort((a, b) => b.netWorth - a.netWorth);
+  let html = '<table><tr><th>Player</th><th>Net Worth</th></tr>';
+  players.forEach(p => {
+    html += `<tr><td>${p.id}</td><td>$${p.netWorth.toFixed(2)}</td></tr>`;
+  });
+  html += '</table>';
+  leaderboardEl.innerHTML = html;
+}
+
+function buyStock(ticker) {
+  socket.emit('buyStock', { ticker, shares: 10 });
+}
+
+function sellStock(ticker, shares) {
+  socket.emit('sellStock', { ticker, shares });
+}
+
+function buyBusiness() {
+  const businessData = {
+    name: 'My Startup',
+    industry: 'Tech',
+    cost: 10000,
+    revenuePerWeek: 600,
+    expensesPerWeek: 300,
+  };
+  socket.emit('buyBusiness', businessData);
+}
+
+function buyRealEstate() {
+  const realEstateData = {
+    type: 'Apartment',
+    price: 50000,
+    rentPerWeek: 750,
+    vacancyRate: 0.1,
+  };
+  socket.emit('buyRealEstate', realEstateData);
+}
+
+document.getElementById('buyPremium').addEventListener('click', () => {
+  // Stub: simulate successful purchase
+  socket.emit('upgradeToPremium');
+});
+
+document.getElementById('useInsiderInfo').addEventListener('click', () => {
+  socket.emit('useInsiderInfo');
+});
+
+document.getElementById('toggleIndexFund').addEventListener('click', () => {
+  if (!player || !player.jailed) {
+    alert('Index fund only available while jailed.');
+    return;
+  }
+  socket.emit('toggleIndexFund', !player.indexFundEnabled);
+});
+
+socket.on('connect', () => {
+  statusEl.textContent = 'Connected to game server';
+});
+
+socket.on('init', data => {
+  player = data.player;
+  stocks = data.stocks;
+  displayStocks();
+  displayPortfolio();
+});
+
+socket.on('stocksUpdate', data => {
+  stocks = data;
+  displayStocks();
+});
+
+socket.on('playerUpdate', updatedPlayer => {
+  if (updatedPlayer.id === player.id) {
+    player = updatedPlayer;
+    displayPortfolio();
+  }
+});
+
+socket.on('playersUpdate', allPlayers => {
+  displayLeaderboard(allPlayers);
+});
+
+socket.on('insiderTip', data => {
+  alert(`Insider Tip: ${data.message}`);
+});
+
+socket.on('jailed', data => {
+  alert(data.message);
+  player.jailed = true;
+  displayPortfolio();
+});
+
+socket.on('released', data => {
+  alert(data.message);
+  player.jailed = false;
+  displayPortfolio();
+});
+
+socket.on('indexFundStatus', data => {
+  alert(`Index Fund is now ${data.enabled ? 'ENABLED' : 'DISABLED'}`);
+  player.indexFundEnabled = data.enabled;
+  displayPortfolio();
+});
+
+socket.on('businessBought', business => {
+  alert(`Business purchased: ${business.name}`);
+  player.businesses[business.id] = business;
+  displayPortfolio();
+});
+
+socket.on('realEstateBought', realEstate => {
+  alert(`Real Estate purchased: ${realEstate.type}`);
+  player.realEstates[realEstate.id] = realEstate;
+  displayPortfolio();
+});
+
+socket.on('premiumStatus', data => {
+  alert('Premium features unlocked!');
+  player.isPremium = data.isPremium;
+  displayPortfolio();
+});
+
+socket.on('error', message => {
+  alert(`Error: ${message}`);
+});

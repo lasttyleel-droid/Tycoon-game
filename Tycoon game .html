@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Fantasy Stock Tycoon</title>
+<style>
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #121212;
+    color: #e0e0e0;
+    margin: 0; padding: 0;
+    display: flex; flex-direction: column; height: 100vh;
+  }
+  header {
+    background: #1f1f1f;
+    padding: 1rem 2rem;
+    font-size: 1.8rem;
+    font-weight: bold;
+    text-align: center;
+  }
+  main {
+    flex: 1;
+    display: flex;
+    gap: 1rem;
+    padding: 1rem 2rem;
+    overflow: hidden;
+  }
+  section {
+    background: #232323;
+    border-radius: 8px;
+    padding: 1rem;
+    overflow-y: auto;
+  }
+  #stockList, #portfolio {
+    flex: 1 1 50%;
+    display: flex;
+    flex-direction: column;
+  }
+  h2 {
+    margin-top: 0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    color: #eee;
+  }
+  th, td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #444;
+    text-align: center;
+  }
+  th {
+    background: #333;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  button {
+    background: #0a84ff;
+    border: none;
+    color: white;
+    padding: 0.35rem 0.7rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+  }
+  button:hover:not(:disabled) {
+    background: #005fcc;
+  }
+  button:disabled {
+    background: #555;
+    cursor: not-allowed;
+  }
+  #controls {
+    margin-top: 1rem;
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+  }
+  #gameInfo {
+    background: #1b1b1b;
+    padding: 1rem 2rem;
+    text-align: center;
+    font-size: 1.1rem;
+  }
+  #balanceDisplay {
+    font-weight: bold;
+  }
+  @media (max-width: 768px) {
+    main {
+      flex-direction: column;
+    }
+    #stockList, #portfolio {
+      flex: none;
+      height: 300px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<header>Fantasy Stock Tycoon</header>
+
+<div id="gameInfo">
+  Week: <span id="weekDisplay">1</span> |
+  Balance: $<span id="balanceDisplay">0.00</span>
+</div>
+
+<main>
+  <section id="stockList">
+    <h2>Market Stocks</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>Price</th>
+          <th>Buy</th>
+        </tr>
+      </thead>
+      <tbody id="stockTableBody"></tbody>
+    </table>
+  </section>
+
+  <section id="portfolio">
+    <h2>Your Portfolio</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>Shares</th>
+          <th>Sell</th>
+        </tr>
+      </thead>
+      <tbody id="portfolioTableBody"></tbody>
+    </table>
+  </section>
+</main>
+
+<div id="controls">
+  <button id="advanceWeekBtn">Advance Week</button>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+
+  let balance = 0;
+  let portfolio = {};
+  let stocks = {};
+  let week = 1;
+
+  const balanceEl = document.getElementById('balanceDisplay');
+  const weekEl = document.getElementById('weekDisplay');
+  const stockTableBody = document.getElementById('stockTableBody');
+  const portfolioTableBody = document.getElementById('portfolioTableBody');
+  const advanceWeekBtn = document.getElementById('advanceWeekBtn');
+
+  // Render stock market table
+  function renderStocks() {
+    stockTableBody.innerHTML = '';
+    for (const symbol in stocks) {
+      const price = stocks[symbol];
+      const tr = document.createElement('tr');
+
+      tr.innerHTML = `
+        <td>${symbol}</td>
+        <td>$${price.toFixed(2)}</td>
+        <td><button data-symbol="${symbol}">Buy 10</button></td>
+      `;
+      stockTableBody.appendChild(tr);
+    }
+
+    // Attach buy button listeners
+    stockTableBody.querySelectorAll('button').forEach(btn => {
+      btn.onclick = () => {
+        const symbol = btn.getAttribute('data-symbol');
+        socket.emit('buyStock', { symbol, shares: 10 });
+      };
+    });
+  }
+
+  // Render player portfolio table
+  function renderPortfolio() {
+    portfolioTableBody.innerHTML = '';
+    const symbols = Object.keys(portfolio);
+    if (symbols.length === 0) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td colspan="3">No stocks owned.</td>';
+      portfolioTableBody.appendChild(tr);
+      return;
+    }
+
+    symbols.forEach(symbol => {
+      const shares = portfolio[symbol];
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${symbol}</td>
+        <td>${shares}</td>
+        <td><button data-symbol="${symbol}">Sell 10</button></td>
+      `;
+      portfolioTableBody.appendChild(tr);
+    });
+
+    // Attach sell button listeners
+    portfolioTableBody.querySelectorAll('button').forEach(btn => {
+      btn.onclick = () => {
+        const symbol = btn.getAttribute('data-symbol');
+        socket.emit('sellStock', { symbol, shares: 10 });
+      };
+    });
+  }
+
+  // Update UI with current data
+  function updateDisplay() {
+    balanceEl.textContent = balance.toFixed(2);
+    weekEl.textContent = week;
+    renderStocks();
+    renderPortfolio();
+  }
+
+  // Socket events
+
+  socket.on('init', (data) => {
+    balance = data.balance;
+    portfolio = data.portfolio;
+    stocks = data.stocks;
+    week = data.week;
+    updateDisplay();
+  });
+
+  socket.on('tradeResult', (result) => {
+    if (result.success) {
+      balance = result.balance;
+      portfolio = result.portfolio;
+      updateDisplay();
+    } else {
+      alert(result.message);
+    }
+  });
+
+  socket.on('weekUpdate', (data) => {
+    week = data.week;
+    stocks = data.stocks;
+    if (data.players && data.players[socket.id]) {
+      balance = data.players[socket.id].balance;
+      portfolio = data.players[socket.id].portfolio;
+    }
+    updateDisplay();
+  });
+
+  socket.on('gameOver', (data) => {
+    alert(data.message);
+    advanceWeekBtn.disabled = true;
+  });
+
+  advanceWeekBtn.onclick = () => {
+    socket.emit('advanceWeek');
+  };
+</script>
+
+</body>
+</html>
